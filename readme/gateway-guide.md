@@ -1,28 +1,82 @@
 # 消息网关指南
 
-消息网关（Gateway）让 Hermes Agent 能够通过 Telegram、Discord、Slack 等聊天平台与用户交互，而不仅限于本地终端。
+Gateway 让 Hermes 能通过 Telegram、Discord、Slack、WhatsApp、Signal 等聊天平台与用户交互，而不只是跑在本地 CLI。
+
+如果你是新人，建议先在 CLI 把问题跑通，再来看这篇。
+
+---
+
+## 什么时候需要 Gateway
+
+你只有在下面场景才需要马上读这篇：
+
+- 要把 Hermes 部署到 Telegram / Discord / Slack 等平台
+- 要调试“CLI 正常、聊天平台不正常”的问题
+- 要给 Hermes 新增一个平台适配器
+
+如果你只是改 prompt、工具、压缩或技能，通常可以先不碰 gateway。
+
+---
+
+## 一句话理解架构
+
+你可以把 gateway 理解成三段式流水线：
+
+```text
+平台适配器
+-> GatewayRunner
+-> AIAgent
+```
+
+也就是说：
+
+- 平台适配器负责接平台协议
+- `GatewayRunner` 负责统一 session、投递、生命周期
+- 真正执行工具、调模型、组织回复的还是 `AIAgent`
+
+这能帮你快速判断问题落点：
+
+- 收不到消息：平台适配器问题
+- 会话乱串：session / runner 问题
+- 回复内容不对：通常还是 agent 或配置问题
 
 ---
 
 ## 支持的平台
 
-| 平台 | 文件 | 特性 |
+| 平台 | 文件 | 说明 |
 |------|------|------|
-| **Telegram** | `gateway/platforms/telegram.py` | 语音备忘录、群组对话、DM 配对 |
-| **Discord** | `gateway/platforms/discord.py` | 线程、语音频道、角色控制 |
-| **Slack** | `gateway/platforms/slack.py` | 线程回复、格式化 |
-| **WhatsApp** | `gateway/platforms/whatsapp.py` | WhatsApp Business API |
-| **Signal** | `gateway/platforms/signal.py` | 端到端加密、群组 |
-| **Matrix** | `gateway/platforms/matrix.py` | 去中心化协议 |
-| **Mattermost** | `gateway/platforms/mattermost.py` | 自托管团队协作 |
-| **Email** | `gateway/platforms/email.py` | 邮件收发 |
-| **SMS** | `gateway/platforms/sms.py` | 短信 |
-| **Home Assistant** | `gateway/platforms/homeassistant.py` | 智能家居 |
-| **DingTalk** | `gateway/platforms/dingtalk.py` | 钉钉 |
-| **Feishu** | `gateway/platforms/feishu.py` | 飞书 |
-| **WeChat** | `gateway/platforms/wecom.py` | 企业微信 |
-| **API Server** | `gateway/platforms/api_server.py` | REST API |
-| **Webhook** | `gateway/platforms/webhook.py` | Webhook 监听 |
+| Telegram | `gateway/platforms/telegram.py` | 最适合新人先接入 |
+| Discord | `gateway/platforms/discord.py` | 线程和频道较丰富 |
+| Slack | `gateway/platforms/slack.py` | 团队协作场景常见 |
+| WhatsApp | `gateway/platforms/whatsapp.py` | Business / bridge 场景 |
+| Signal | `gateway/platforms/signal.py` | 加密消息场景 |
+| Matrix | `gateway/platforms/matrix.py` | 去中心化协议 |
+| Mattermost | `gateway/platforms/mattermost.py` | 自托管团队平台 |
+| Email | `gateway/platforms/email.py` | 邮件收发 |
+| SMS | `gateway/platforms/sms.py` | 短信投递 |
+| Home Assistant | `gateway/platforms/homeassistant.py` | 家居事件入口 |
+| DingTalk / Feishu / WeCom | `gateway/platforms/*.py` | 企业通信平台 |
+| API Server | `gateway/platforms/api_server.py` | OpenAI 兼容接口入口 |
+| Webhook | `gateway/platforms/webhook.py` | 接外部 webhook |
+
+---
+
+## 新人推荐：先完成一次 Telegram 闭环
+
+原因很简单：
+
+- 配置路径清晰
+- 社区和现有实现都较成熟
+- 调试反馈快
+
+最小步骤：
+
+1. 配置 `TELEGRAM_BOT_TOKEN`
+2. 只启用 `telegram`
+3. 启动 `hermes gateway start`
+4. 跑 `hermes gateway status`
+5. 给 bot 发一条最简单的消息
 
 ---
 
@@ -30,7 +84,7 @@
 
 ### 1. 配置平台凭证
 
-编辑 `~/.hermes/config.yaml`：
+可以放在 `config.yaml`：
 
 ```yaml
 gateway:
@@ -43,7 +97,7 @@ gateway:
         name: "My Chat"
 ```
 
-或在 `~/.hermes/.env` 中设置：
+或者放在 `.env`：
 
 ```env
 TELEGRAM_BOT_TOKEN=your_token_here
@@ -52,13 +106,8 @@ TELEGRAM_BOT_TOKEN=your_token_here
 ### 2. 启动网关
 
 ```bash
-# 启动所有已启用的平台
 hermes gateway start
-
-# 查看状态
 hermes gateway status
-
-# 停止
 hermes gateway stop
 ```
 
@@ -66,52 +115,22 @@ hermes gateway stop
 
 ```bash
 hermes setup
-# 选择 "Gateway" 部分进行配置
 ```
+
+然后在 setup 里进入 Gateway 部分。
 
 ---
 
-## 架构概览
-
-```
-外部平台（Telegram/Discord/...）
-    │
-    ▼
-平台适配器（gateway/platforms/*.py）
-    │  - 接收消息
-    │  - 转换为统一格式
-    │
-    ▼
-GatewayRunner（gateway/run.py）
-    │  - 管理所有平台的生命周期
-    │  - 创建/恢复会话
-    │
-    ▼
-AIAgent（run_agent.py）
-    │  - 处理消息
-    │  - 执行工具
-    │  - 生成回复
-    │
-    ▼
-消息投递（gateway/delivery.py）
-    │  - 格式化回复
-    │  - 流式推送
-    │
-    ▼
-外部平台（返回给用户）
-```
-
-### 核心模块
+## 核心模块
 
 | 模块 | 文件 | 说明 |
 |------|------|------|
-| `GatewayRunner` | `gateway/run.py` | 网关主入口，管理平台生命周期 |
-| `Session` | `gateway/session.py` | 会话状态管理、PII 脱敏 |
-| `Config` | `gateway/config.py` | 网关配置加载与校验 |
-| `Delivery` | `gateway/delivery.py` | 消息投递编排 |
-| `Hooks` | `gateway/hooks.py` | 事件钩子系统 |
-| `Pairing` | `gateway/pairing.py` | DM 配对工作流 |
-| `Status` | `gateway/status.py` | 健康监控 |
+| `GatewayRunner` | `gateway/run.py` | 网关主编排器 |
+| `SessionStore` | `gateway/session.py` | 会话管理和脱敏 |
+| `Delivery` | `gateway/delivery.py` | 回复投递和流式发送 |
+| `Hooks` | `gateway/hooks.py` | 网关事件钩子 |
+| `Pairing` | `gateway/pairing.py` | 配对与 home channel 逻辑 |
+| `Status` | `gateway/status.py` | 健康监控和锁 |
 
 ---
 
@@ -119,7 +138,6 @@ AIAgent（run_agent.py）
 
 ```yaml
 gateway:
-  # 平台配置
   platforms:
     telegram:
       enabled: true
@@ -129,78 +147,59 @@ gateway:
         name: "Main Chat"
 
     discord:
-      enabled: true
-      token: "DISCORD_BOT_TOKEN"
+      enabled: false
+      token: null
 
     slack:
       enabled: false
-      token: "xoxb-..."
-      app_token: "xapp-..."
+      token: null
+      app_token: null
 
-  # 会话重置策略
   session_reset:
     mode: "both"          # daily / idle / both / none
-    at_hour: 4            # 每天几点重置（mode=daily 或 both）
-    idle_minutes: 1440    # 空闲多少分钟重置（mode=idle 或 both）
+    at_hour: 4
+    idle_minutes: 1440
 
-  # 流式输出
   streaming:
     enabled: true
-    transport: "edit"     # edit（编辑消息）或 new（发新消息）
+    transport: "edit"     # edit 或 new
 ```
 
 ---
 
 ## 会话管理
 
-### 会话重置策略
+### 自动重置策略
 
-网关支持自动重置长时间不活跃的会话：
+Gateway 支持按时间或空闲时长重置 session：
 
-- `daily` — 每天在指定时刻（`at_hour`）重置
-- `idle` — 空闲超过 `idle_minutes` 后重置
-- `both` — 同时启用以上两种
-- `none` — 永不自动重置
+- `daily`
+- `idle`
+- `both`
+- `none`
 
 ### PII 脱敏
 
-`gateway/session.py` 自动对用户 ID 和聊天 ID 进行哈希处理：
-
-- 用户 ID → `user_<12位hex>`
-- 聊天 ID → `platform:<hash>`（保留平台前缀）
-- 电话号码 → E.164 格式掩码
+`gateway/session.py` 会对用户标识进行脱敏和内部映射，所以你在日志或调试输出里看到的未必是平台原始 ID。
 
 ---
 
 ## 定时任务投递
 
-定时任务（Cron）可以将结果自动投递到网关平台：
+如果你配置了 `home_channel`，cron 结果可以自动投递到目标平台。
 
-```yaml
-# 在配置中指定 home_channel 后，cron 结果会发到该频道
-gateway:
-  platforms:
-    telegram:
-      home_channel:
-        chat_id: "-1001234567890"
-```
+这意味着：
 
-通过 `/cron` 命令或 `hermes cron` 创建定时任务时，可以指定投递目标。
+- cron 是异步执行器
+- gateway 是消息投递出口
 
----
-
-## 事件钩子
-
-`gateway/hooks.py` 提供事件钩子系统，可以在特定事件触发时执行自定义逻辑。
-
-内置钩子：
-- `boot_md.py` — 启动时加载 `SOUL.md` 人格文件
+出现“任务跑了但消息没发出来”的问题时，要同时查 cron 和 gateway。
 
 ---
 
 ## Docker 部署
 
-使用 Docker 部署网关是推荐的生产方式：
+生产环境常用方式：
 
 ```bash
 docker build -t hermes-agent .
@@ -212,17 +211,37 @@ docker run -d \
   hermes gateway start
 ```
 
-`docker/entrypoint.sh` 和 `docker/SOUL.md` 提供了默认的容器启动配置。
+---
+
+## 调试清单
+
+gateway 有问题时，推荐按这个顺序排查：
+
+1. `source venv/bin/activate`
+2. `hermes doctor`
+3. `hermes gateway status`
+4. 只启用一个平台，降低变量数量
+5. 在 CLI 里复现相同 prompt，确认不是 agent 核心问题
+6. 看 `gateway/run.py` 和对应平台适配器
+
+常见症状对应的排查方向：
+
+- 收不到消息：token / webhook / 平台适配器
+- 会话串了：`gateway/session.py`
+- 回复发不出去：`gateway/delivery.py`
+- 重置时机不对：`session_reset`
+- 定时消息不投递：`home_channel` 与 cron
 
 ---
 
-## 添加新平台
+## 新增平台适配器
 
-想为新的聊天平台添加支持？参见 [开发者指南](./development-guide.md#添加新的消息平台)。
+想支持一个新平台时，核心步骤通常是：
 
-核心步骤：
-1. 在 `gateway/platforms/` 下创建新文件
-2. 继承 `base.py` 中的抽象基类
-3. 实现 `start()`、`stop()`、`send_message()` 等方法
-4. 在 `gateway/config.py` 的 `Platform` 枚举中注册
-5. 编写测试
+1. 在 `gateway/platforms/` 下新增文件
+2. 继承平台抽象基类
+3. 实现启动、停止、接收和发送逻辑
+4. 在网关配置和平台枚举中注册
+5. 在 `tests/gateway/` 下补测试
+
+更具体的开发流程请看 [development-guide.md](./development-guide.md)。

@@ -3088,7 +3088,6 @@ class AIAgent:
 
 
 
-
     def _build_system_prompt(self, system_message: str = None) -> str:
         """
         Assemble the full system prompt from all layers.

@@ -1,137 +1,139 @@
 # Skills 技能系统指南
 
-技能（Skills）是 Hermes Agent 最强大的扩展机制。每个技能是一份 Markdown 文档，描述了智能体在特定场景下应该如何行为、使用什么工具、遵循什么步骤。
+Skills 是 Hermes 的“可复用操作手册”。它们不是 Python 工具，而是用 Markdown 写的执行指导，帮助 agent 在遇到某类任务时采用更稳定的流程。
 
 ---
 
-## 技能的本质
+## 先分清楚 3 个概念
 
-技能本质上是一份**增强提示词**，当用户的请求匹配到某个技能时，该技能的内容会被注入到系统提示词中，指导智能体的行为。
+| 类型 | 本质 | 位置 | 作用 |
+|------|------|------|------|
+| Skill | Markdown 指南 | `skills/` 或 `~/.hermes/skills/` | 告诉模型“这类任务该怎么做” |
+| Tool | Python 能力 | `tools/` | 给模型可调用的能力 |
+| Plugin | 运行时扩展机制 | `plugins/`、`~/.hermes/plugins/` | 扩展 tool、hook、provider 等 |
 
-每个技能是一个目录，核心文件是 `SKILL.md`：
+一句话记忆：
 
-```
+- Tool 决定“能做什么”
+- Skill 决定“应该怎么做”
+- Plugin 决定“怎么接新的运行时扩展”
+
+---
+
+## Skills 的本质
+
+Skill 更像：
+
+- 给 agent 的 SOP
+- 面向特定任务域的操作指南
+- 一段可检索、可注入提示词的经验
+
+每个 Skill 通常是一个目录，核心文件是 `SKILL.md`：
+
+```text
 skills/
 └── github/
     └── code-review/
-        ├── SKILL.md          # 技能描述和指令
-        └── resources/        # 可选的附加资源
+        ├── SKILL.md
+        └── resources/
 ```
 
 ---
 
-## 技能目录结构
+## 技能目录
 
-### 内置技能（`skills/`）
+### 内置技能
 
-安装时自动复制到 `~/.hermes/skills/`，约 30+ 类别：
+仓库里的 `skills/` 会在安装后复制到 `~/.hermes/skills/`。这些是官方或内置技能。
 
-| 类别 | 目录 | 示例技能 |
-|------|------|----------|
-| Apple 生态 | `apple/` | iMessage、Reminders、Notes、Find My |
-| 自主智能体 | `autonomous-ai-agents/` | Claude Code、Codex、OpenCode 集成 |
-| 创意工具 | `creative/` | ASCII 艺术、视频、p5.js、Manim、Excalidraw |
-| 数据科学 | `data-science/` | Jupyter 实时内核 |
-| DevOps | `devops/` | Webhook 订阅 |
-| 图表制作 | `diagramming/` | 各种图表生成 |
-| GitHub | `github/` | 认证、Issue、PR、代码审查 |
-| 媒体工具 | `media/` | YouTube、Songsee、音乐 |
-| ML 工具 | `mlops/` | HuggingFace、向量数据库、训练、评估 |
-| 笔记工具 | `note-taking/` | Obsidian 集成 |
-| 生产力 | `productivity/` | Google Workspace、Linear、Notion |
-| 研究 | `research/` | Arxiv、博客监控、LLM Wiki |
-| 社交媒体 | `social-media/` | Twitter/X |
-| 软件开发 | `software-development/` | 规划、调试、测试、代码审查 |
-| 智能家居 | `smart-home/` | 灯光控制等 |
+### 可选技能
 
-### 可选技能（`optional-skills/`）
-
-不默认安装，通过 Hub 发现和安装：
+`optional-skills/` 里的内容不会默认安装，通常通过：
 
 ```bash
-hermes skills          # 浏览技能 Hub
+hermes skills
 ```
 
-包含：区块链工具、Blender MCP、健康 BCI、更多 ML 工具等。
+来浏览和安装。
 
 ---
 
-## SKILL.md 格式
-
-每个技能的核心是 `SKILL.md` 文件，包含 YAML Frontmatter 和 Markdown 正文：
+## 一个 `SKILL.md` 长什么样
 
 ```markdown
 ---
-platforms: [macos, linux]       # 可选：限制支持的操作系统
-tags: [automation, python]      # 可选：分类标签
-requires: [github_token]        # 可选：所需的环境变量
+platforms: [macos, linux]
+tags: [automation, python]
+requires: [GITHUB_TOKEN]
 ---
 
 # 技能名称
 
-技能的简短描述（第一段会被提取为摘要）。
+这里的第一段最好就是一句清晰摘要，因为它会影响索引和触发效果。
 
 ## 使用场景
 
-描述什么时候应该触发这个技能...
+说明什么时候该用这个 skill。
 
-## 操作步骤
+## 步骤
 
-1. 第一步...
-2. 第二步...
+1. 先做什么
+2. 再做什么
+3. 最后做什么
 
 ## 注意事项
 
-- 重要提醒...
+- 关键限制
+- 风险点
+- 常见失败原因
 ```
 
 ### Frontmatter 字段
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `platforms` | `list[str]` | 支持的操作系统：`macos`、`linux`、`windows` |
-| `tags` | `list[str]` | 分类标签 |
-| `requires` | `list[str]` | 所需环境变量 |
+| 字段 | 说明 |
+|------|------|
+| `platforms` | 限制支持的平台或系统 |
+| `tags` | 帮助检索和触发 |
+| `requires` | 依赖的环境变量或外部条件 |
 
 ---
 
-## 技能的生命周期
+## Skills 的生命周期
 
-### 1. 发现
+### 1. 被发现
 
-在系统提示词构建时，`agent/prompt_builder.py` 调用 `build_skills_system_prompt()` 扫描所有技能目录，生成索引。
+在 system prompt 构建期间，Hermes 会扫描技能目录并生成技能索引。
 
-### 2. 匹配
+### 2. 被匹配
 
-当用户输入匹配到某个技能的描述或标签时，智能体会选择使用对应的技能工具：
+当用户任务和 skill 描述、标签或内容足够接近时，agent 会选择查看或使用它。
 
-```
-用户: "帮我做一个 code review"
-        │
-        ▼
-智能体识别 → 使用 skills_tool 查看 github/code-review 技能
-        │
-        ▼
-技能内容注入上下文 → 按照技能指令执行
-```
+### 3. 被执行
 
-### 3. 执行
+Skill 本身不执行代码，但会指导 agent 使用合适的工具和步骤完成任务。
 
-智能体按照技能中定义的步骤，使用相应的工具完成任务。
+### 4. 被沉淀和迭代
 
-### 4. 创建与改进
+复杂任务可以被总结成新 skill，现有 skill 也可以持续更新。
 
-智能体可以自动将复杂任务提炼为新技能，或改进现有技能：
+---
 
-```
-用户: "把刚才做的事情创建成一个技能"
-        │
-        ▼
-skill_manager_tool.create_skill()
-        │
-        ▼
-新技能保存到 ~/.hermes/skills/
-```
+## 新人最常见的两个场景
+
+### 场景 1：我想先用现成技能
+
+1. 运行 `hermes skills`
+2. 看看有哪些分类和技能
+3. 在会话里提出一个比较明确的任务
+4. 必要时让 agent 查看具体 skill
+
+### 场景 2：我想沉淀自己的 SOP
+
+1. 手写一个最小 `SKILL.md`
+2. 放到 `~/.hermes/skills/<category>/<name>/`
+3. 重启 Hermes
+4. 试着用自然语言触发它
+5. 根据执行结果继续改
 
 ---
 
@@ -140,23 +142,21 @@ skill_manager_tool.create_skill()
 ### 查看可用技能
 
 ```bash
-hermes skills                # 交互式浏览
+hermes skills
 ```
 
-在聊天中：
+在聊天里也可以：
 
-```
-/skills                      # 列出所有技能
+```text
+/skills
 ```
 
 ### 禁用技能
 
-在 `~/.hermes/config.yaml` 中：
-
 ```yaml
 skills:
   disabled:
-    - social-media/xitter    # 禁用特定技能
+    - social-media/xitter
 ```
 
 ### 添加外部技能目录
@@ -164,8 +164,10 @@ skills:
 ```yaml
 skills:
   external_dirs:
-    - /path/to/my/skills     # 添加自定义技能目录
+    - /path/to/my/skills
 ```
+
+这对团队很有用，因为你可以把技能目录放在单独仓库里共同维护。
 
 ---
 
@@ -173,59 +175,41 @@ skills:
 
 ### 手动创建
 
-1. 在 `~/.hermes/skills/` 下创建目录：
-
 ```bash
 mkdir -p ~/.hermes/skills/my-category/my-skill
 ```
 
-2. 创建 `SKILL.md`：
+然后创建 `SKILL.md`。
 
-```markdown
----
-tags: [automation]
----
+### 让 Hermes 帮你创建
 
-# 我的技能
-
-这个技能帮助用户完成某个特定任务。
-
-## 步骤
-
-1. 首先...
-2. 然后...
-3. 最后...
-```
-
-3. 重启 Hermes，新技能会自动被发现。
-
-### 让智能体帮你创建
-
-在对话中：
-
-```
-你: 帮我创建一个技能，用于自动化部署到 Vercel
-智能体: （使用 create_skill 工具，生成 SKILL.md）
-```
-
-### 技能编写最佳实践
-
-- **描述要具体** — 第一段是索引摘要，要清晰说明技能的用途
-- **步骤要明确** — 用编号列表写清具体操作步骤
-- **包含示例** — 给出输入输出示例，让智能体更好理解
-- **声明依赖** — 在 frontmatter 中声明所需的环境变量和平台
-- **保持聚焦** — 一个技能解决一个具体问题，不要做太通用
+你也可以在会话里直接要求 agent 帮你生成一个 skill，然后再人工审阅它。
 
 ---
 
-## 技能系统的关键代码
+## 编写最佳实践
+
+- 第一段摘要要具体，直接说清楚用途
+- 步骤要编号，不要写得太散
+- 一个 skill 解决一个窄问题
+- 适当写失败场景和注意事项
+- `requires` 只写真正影响执行的依赖
+
+额外给新人的两条建议：
+
+- 先写小 skill，再写大 skill
+- skill 描述流程和策略，不要重复工具 API 说明
+
+---
+
+## 和代码实现对应的关键位置
 
 | 文件 | 说明 |
 |------|------|
-| `agent/skill_utils.py` | 技能元数据解析（frontmatter、平台匹配） |
-| `agent/skill_commands.py` | `/skill-name` 命令解析 |
-| `agent/prompt_builder.py` | 技能索引构建（`build_skills_system_prompt()`） |
-| `tools/skills_tool.py` | `view_skill`、`list_skills` 工具 |
-| `tools/skill_manager_tool.py` | `create_skill`、`update_skill` 工具 |
-| `hermes_cli/skills_config.py` | CLI 技能配置 |
-| `hermes_cli/skills_hub.py` | 技能 Hub 浏览与安装 |
+| `agent/skill_utils.py` | skill 元数据解析 |
+| `agent/skill_commands.py` | `/skill-name` 相关命令支持 |
+| `agent/prompt_builder.py` | 技能索引和注入 |
+| `tools/skills_tool.py` | 查看和列出技能 |
+| `tools/skill_manager_tool.py` | 创建和更新技能 |
+| `hermes_cli/skills_config.py` | 技能配置 |
+| `hermes_cli/skills_hub.py` | 技能浏览和安装 |

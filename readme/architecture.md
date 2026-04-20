@@ -4,6 +4,66 @@
 
 ---
 
+## 这份文档适合什么时候读
+
+如果你是第一次进入仓库，建议先读：
+
+1. [simple.md](./simple.md)
+2. [development-guide.md](./development-guide.md)
+
+再来看这篇。因为这篇默认你已经知道：
+
+- Hermes 有 CLI 和 gateway 两个主要入口
+- Hermes 的核心是 `AIAgent` 工具调用循环
+- Tools、Skills、Plugins 不是一回事
+
+如果你今天只想做一个小改动，这篇不用一次读完。优先看：
+
+- “核心运行循环”
+- “模块依赖关系”
+- “工具系统设计”
+
+---
+
+## 新人应该先抓住的 3 条主线
+
+### 1. `run_agent.py` 是主编排器
+
+模型、消息、工具、压缩、记忆、会话持久化，最后都汇总到这里。
+
+### 2. `model_tools.py` + `tools/registry.py` 是工具入口
+
+“模型为什么能看到某个工具”以及“这个工具为什么没暴露出来”的问题，大多要回到这里。
+
+### 3. `cli.py` / `gateway/run.py` 是两种运行模式
+
+同一个 agent 内核分别被终端和消息平台驱动。很多问题其实是入口差异，而不是 agent 核心坏了。
+
+---
+
+## 一条请求怎么走完整条链路
+
+```text
+CLI 或 Gateway 收到输入
+-> 创建 / 恢复 AIAgent
+-> 组装 system prompt 和 tool definitions
+-> 调 LLM
+-> 如果返回 tool_calls，就分发执行工具
+-> 把工具结果追加到消息历史
+-> 再调 LLM
+-> 返回最终回复
+-> 持久化 session / 记忆 / 轨迹
+```
+
+调试时可以先判断问题卡在哪一段：
+
+- 输入进入前：CLI / gateway
+- API 请求前：prompt / tools / config
+- tool call 中：registry / handler / env
+- 返回后：memory / compression / persistence / display
+
+---
+
 ## 核心运行循环
 
 Hermes Agent 的心脏是一个**工具调用循环**（Tool-Calling Loop）。整个流程如下：
@@ -44,7 +104,7 @@ AIAgent._run_agent_loop()
            └── 智能摘要中间对话，保留首尾
 ```
 
-**关键文件：** `run_agent.py` — `AIAgent` 类（约 9,400 行）
+**关键文件：** `run_agent.py` — `AIAgent` 类（大型核心编排文件）
 
 ---
 

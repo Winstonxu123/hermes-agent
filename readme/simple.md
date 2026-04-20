@@ -1,323 +1,205 @@
-# Hermes Agent 定制开发指南
+# Hermes Agent 新人 Onboarding
 
-## 开发环境
+这份文档是给**第一次进入 Hermes 仓库的开发者**准备的。目标不是一次看懂全部实现，而是让你在前 30 分钟内完成下面 4 件事：
+
+1. 知道项目是干什么的
+2. 知道第一天应该先看哪些文件
+3. 知道怎么把项目跑起来
+4. 知道第一个改动应该从哪里下手
+
+更详细的材料请继续阅读：
+
+- [开发者指南](./development-guide.md)
+- [系统架构](./architecture.md)
+- [CLI 命令指南](./cli-guide.md)
+- [配置参考](./configuration-reference.md)
+
+---
+
+## 30 分钟上手路径
+
+### 第 1 步：把环境跑通
 
 ```bash
-git clone <repo-url> hermes-agent && cd hermes-agent
-uv venv venv --python 3.11 && source venv/bin/activate
+git clone <repo-url> hermes-agent
+cd hermes-agent
+
+uv venv venv --python 3.11
+source venv/bin/activate
 uv pip install -e ".[all,dev]"
-hermes doctor  # 验证
+
+hermes doctor
+hermes
 ```
+
+仓库里的硬约定是：
+
+```bash
+source venv/bin/activate
+```
+
+只要你准备跑 Python 命令、测试或 CLI，先做这一步。
+
+### 第 2 步：先建立一个粗模型
+
+Hermes 可以先粗暴地理解成：
+
+```text
+用户输入
+-> AIAgent 组装 prompt 和工具列表
+-> 调用 LLM
+-> 如果返回 tool_calls 就执行工具
+-> 把工具结果塞回去
+-> 再调 LLM
+-> 直到拿到最终回答
+```
+
+目录多，不代表你第一天要全看。先抓住 3 条主线：
+
+1. `run_agent.py`：主循环，所有能力最终汇总到这里。
+2. `model_tools.py` + `tools/registry.py`：工具是怎么被发现、注册、暴露给模型的。
+3. `cli.py` / `gateway/run.py`：同一个 agent 怎么被终端或消息平台驱动。
+
+### 第 3 步：按目标找文件
+
+| 你的目标 | 先看这些文件 |
+|---------|--------------|
+| 理解整体架构 | `readme/architecture.md`、`run_agent.py` |
+| 改一个工具 | `tools/<tool>.py`、`tools/registry.py`、`model_tools.py` |
+| 改系统提示词 | `agent/prompt_builder.py` |
+| 改上下文压缩 | `agent/context_compressor.py` |
+| 改 CLI 行为 | `cli.py`、`hermes_cli/main.py`、`hermes_cli/commands.py` |
+| 改消息平台 | `gateway/run.py`、`gateway/platforms/<platform>.py` |
+| 加技能 | `skills/`、`agent/skill_utils.py`、`tools/skills_tool.py` |
+| 加 plugin/provider | `plugins/`、`hermes_cli/plugins.py` |
+
+### 第 4 步：选一个最小改动
+
+第一次提改动，优先选这些：
+
+1. 修文档和代码不一致
+2. 给现有工具补测试
+3. 修一个 CLI 文案或帮助信息
+4. 修一个配置项说明
+5. 修一个小型工具暴露或展示问题
+
+不建议第一次就做：
+
+- 大规模拆 `run_agent.py`
+- 同时动 CLI、gateway、tool registry 三层
+- 一口气重构工具和提示词系统
 
 ---
 
-## 架构概要
+## 第一天推荐阅读顺序
 
-核心是一个工具调用循环：用户输入 -> 构建 prompt -> 调用 LLM -> 解析响应 -> 若有 tool_calls 则执行工具并回到 LLM，否则返回最终回答。
+### 第一天
 
-```
-run_agent.py (AIAgent)          # 核心编排：对话循环、工具分发、会话管理
-├── agent/
-│   ├── prompt_builder.py       # 系统提示词组装（身份/平台/技能索引/记忆）
-│   ├── context_compressor.py   # 上下文压缩（接近 token 上限时触发）
-│   ├── model_metadata.py       # 模型元数据（context length、定价）
-│   ├── memory_manager.py       # 记忆管理（预取/同步）
-│   └── skill_utils.py          # 技能元数据解析
-├── model_tools.py              # 工具发现 & 分发
-├── tools/registry.py           # 工具注册中心
-├── tools/                      # 50+ 工具实现
-├── toolsets.py                 # 工具集分组定义
-├── gateway/                    # 消息平台网关
-│   ├── run.py                  # GatewayRunner
-│   ├── session.py              # 会话管理
-│   ├── delivery.py             # 消息投递
-│   └── platforms/              # 各平台适配器
-├── plugins/memory/             # 记忆提供商插件
-├── cli.py                      # 交互式 TUI
-├── hermes_cli/                 # CLI 子命令
-├── skills/                     # 内置技能（Markdown）
-├── cron/                       # 定时任务调度
-└── acp_adapter/                # 编辑器集成（VS Code、Cursor）
-```
+1. 读完这份文档
+2. 跑一次 `hermes`
+3. 读 [development-guide.md](./development-guide.md)
+4. 读 [architecture.md](./architecture.md) 的前半部分
 
-### 快速定位
+### 第二天
 
-| 想改什么 | 去哪里 |
-|---------|--------|
-| 核心对话循环 | `run_agent.py` → `AIAgent` |
-| 系统提示词 | `agent/prompt_builder.py` |
-| 上下文压缩 | `agent/context_compressor.py` |
-| 工具注册机制 | `tools/registry.py` |
-| 工具集分组 | `toolsets.py`、`toolset_distributions.py` |
-| 工具发现/分发 | `model_tools.py` |
-| 某个工具的实现 | `tools/<tool_name>.py` |
-| 某个平台网关 | `gateway/platforms/<platform>.py` |
-| 网关会话管理 | `gateway/session.py` |
-| 技能解析 | `agent/skill_utils.py` |
-| 定时任务 | `cron/scheduler.py`、`cron/jobs.py` |
+1. 看 `run_agent.py` 里的 `AIAgent.__init__`
+2. 看 `run_conversation()`
+3. 配合 [run_agent-reading-map.md](./run_agent-reading-map.md) 跳读
 
-### 核心设计模式
+### 第三天以后
 
-| 模式 | 位置 | 说明 |
+按目标继续：
+
+- 工具：看 [tools-reference.md](./tools-reference.md)
+- Skills：看 [skills-guide.md](./skills-guide.md)
+- Gateway：看 [gateway-guide.md](./gateway-guide.md)
+- Plugin：看 [plugin-integration-guide.md](./plugin-integration-guide.md)
+
+---
+
+## 你应该分清楚的 4 个概念
+
+| 概念 | 本质 | 位置 |
 |------|------|------|
-| 注册表 | `tools/registry.py` | 工具自注册，import 即注册 |
-| 策略 | `tools/environments/` | 可插拔的终端执行后端（local/docker/ssh/modal...） |
-| 插件 | `plugins/memory/` | 动态加载记忆提供商 |
-| 网关适配 | `gateway/platforms/` | 统一接口，平台无关 |
+| `AIAgent` | 主循环编排器 | `run_agent.py` |
+| Tool | 模型可调用的 Python 能力 | `tools/` |
+| Skill | Markdown 操作指南 / SOP | `skills/` |
+| Plugin | 运行时扩展机制 | `plugins/`、`~/.hermes/plugins/` |
+
+一句话记忆：
+
+- Tool 决定“能做什么”
+- Skill 决定“应该怎么做”
+- Plugin 决定“怎么接新的运行时扩展”
 
 ---
 
-## 扩展点
+## 新人最容易踩的坑
 
-### 1. 添加工具
+### 1. 忘记激活虚拟环境
 
-**Step 1** — 在 `tools/` 下创建文件：
+很多奇怪的 `ImportError`、命令找不到、测试不一致，最后都是这个原因。
 
-```python
-# tools/my_tool.py
-from tools.registry import registry
+### 2. 一上来就从 `run_agent.py` 第 1 行读到最后
 
-def check_available():
-    import os
-    return os.environ.get("MY_API_KEY") is not None
+这会很痛苦。更高效的顺序是：
 
-async def handle_my_action(arguments: dict, **kwargs) -> str:
-    param1 = arguments.get("param1", "")
-    return f"结果: {param1}"
+1. `simple.md`
+2. `architecture.md`
+3. `run_agent-reading-map.md`
+4. 再按功能跳读 `run_agent.py`
 
-registry.register(
-    name="my_action",
-    toolset="my_toolset",
-    schema={
-        "type": "function",
-        "function": {
-            "name": "my_action",
-            "description": "执行我的操作",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "param1": {"type": "string", "description": "参数说明"}
-                },
-                "required": ["param1"]
-            }
-        }
-    },
-    handler=handle_my_action,
-    check_fn=check_available,
-    requires_env=["MY_API_KEY"],
-    is_async=True,
-)
-```
+### 3. 以为文档里的旧名字一定是当前实现
 
-**Step 2** — 在 `model_tools.py` 的 `_discover_tools()` 中添加 `from tools import my_tool`
+有些名称是历史遗留。碰到不一致时，优先相信：
 
-**Step 3**（可选）— 若创建了新工具集，在 `toolsets.py` 中注册：`TOOLSETS["my_toolset"] = ["my_action"]`
+- `hermes_cli/commands.py`
+- `toolsets.py`
+- `model_tools.py`
+- `tools/registry.py`
 
-要点：
-- handler 返回字符串（成功失败都是），不要抛出未捕获异常
-- `check_fn` 控制工具是否对 LLM 可见
-- `requires_env` 声明依赖的环境变量
+### 4. 一上来就跑全量测试
 
-### 2. 添加消息平台
-
-在 `gateway/platforms/` 下创建适配器，继承 `base.py` 中的抽象基类：
-
-```python
-# gateway/platforms/my_platform.py
-from gateway.platforms.base import BasePlatform
-
-class MyPlatformAdapter(BasePlatform):
-    async def start(self):
-        """启动连接"""
-    async def stop(self):
-        """断开连接"""
-    async def send_message(self, chat_id: str, text: str, **kwargs):
-        """发送消息"""
-    async def on_message(self, message):
-        """收到消息 -> 转为统一格式交给 GatewayRunner"""
-```
-
-然后在 `gateway/config.py` 的 `Platform` 枚举中注册。
-
-### 3. 添加记忆提供商
-
-```python
-# plugins/memory/my_memory/__init__.py
-def register(ctx):
-    from agent.memory_provider import MemoryProvider
-
-    class MyMemoryProvider(MemoryProvider):
-        async def prefetch(self, user_message: str) -> str:
-            """对话开始前预取相关记忆"""
-        async def sync(self, user_msg: str, assistant_response: str):
-            """对话结束后持久化"""
-
-    ctx.add_provider(MyMemoryProvider())
-```
-
-通过 `config.yaml` 中 `memory.provider` 切换。
-
-### 4. 创建技能
-
-技能是 Markdown 增强提示词，放在 `~/.hermes/skills/<类别>/<技能名>/SKILL.md`：
-
-```markdown
----
-platforms: [macos, linux]
-tags: [automation]
-requires: [GITHUB_TOKEN]
----
-
-# 技能名称
-
-简短描述（第一段作为索引摘要）。
-
-## 步骤
-
-1. ...
-2. ...
-```
-
-技能会在 prompt 构建时被扫描索引，匹配后注入系统提示词。相关代码：`agent/skill_utils.py`、`agent/prompt_builder.py` 中的 `build_skills_system_prompt()`。
-
-### 5. MCP 工具集成
-
-在 `~/.hermes/config.yaml` 中声明 MCP 服务器，工具会自动注册：
-
-```yaml
-mcp:
-  servers:
-    - name: my-server
-      command: npx
-      args: ["-y", "@my/mcp-server"]
-      env:
-        API_KEY: "..."
-```
-
-### 6. 终端执行后端
-
-通过策略模式切换（`tools/environments/`），实现 `base.py` 的抽象基类即可添加新后端：
-
-```
-tools/environments/
-├── base.py            # 抽象基类
-├── local.py           # 本地 Shell
-├── docker.py          # Docker
-├── ssh.py             # SSH
-├── modal.py           # Modal
-├── daytona.py         # Daytona
-├── singularity.py     # Singularity
-└── persistent_shell.py
-```
-
-通过 `config.yaml` 中 `terminal.env_type` 切换。
-
----
-
-## 配置体系
-
-配置目录：`~/.hermes/`（可通过 `HERMES_HOME` 环境变量覆盖）
-
-```
-~/.hermes/
-├── config.yaml     # 主配置
-├── .env            # API 密钥
-├── skills/         # 技能
-├── memories/       # 记忆
-├── state.db        # 会话数据库
-├── cron/           # 定时任务
-└── profiles/       # 多配置隔离
-```
-
-关键配置项：
-
-```yaml
-model:
-  default: "anthropic/claude-sonnet-4-20250514"
-  provider: "openrouter"       # openrouter/anthropic/openai/custom
-  base_url: null               # 自定义端点
-
-terminal:
-  env_type: "local"            # local/docker/ssh/modal/daytona/singularity
-
-compression:
-  enabled: true
-  threshold: 0.5               # token 使用率阈值
-
-agent:
-  max_turns: 50
-  system_prompt: null           # 追加自定义提示词
-
-delegation:
-  max_iterations: 20
-  default_toolsets: [terminal, file, web]
-
-toolsets:
-  enabled: [web, terminal, file, skills, memory, cron, delegate]
-  disabled: [browser, vision]
-
-skills:
-  disabled: [social-media/xitter]
-  external_dirs: [/path/to/custom/skills]
-
-memory:
-  provider: "builtin"          # builtin/mem0/honcho/...
-```
-
-环境变量覆盖：`HERMES_MODEL`、`HERMES_BASE_URL`、`HERMES_PROVIDER`、`HERMES_PROFILE`
-
----
-
-## 测试
+先跑最小相关测试：
 
 ```bash
-pytest tests/ -v                          # 全部
-pytest tests/test_agent_loop.py -v        # 单文件
-pytest tests/test_agent_loop.py::test_name -v  # 单测试
-pytest tests/ --cov=. --cov-report=html   # 覆盖率
+python -m pytest tests/hermes_cli/ -q
+python -m pytest tests/agent/ -q
 ```
 
-测试目录与源码对应：`tests/agent/`、`tests/gateway/`、`tests/hermes_cli/`、`tests/plugins/` 等。需要 API 的工具用 `unittest.mock` 模拟。
+确认方向正确后，再扩大测试范围。
 
 ---
 
-## 调试
+## 新人调试套路
 
-```bash
-HERMES_LOG_LEVEL=DEBUG hermes   # 详细日志
-HERMES_LOG_API=1 hermes         # 查看 API 请求
-```
+出现问题时，按这个顺序排查通常比较稳：
+
+1. `source venv/bin/activate`
+2. `hermes doctor`
+3. `HERMES_LOG_LEVEL=DEBUG hermes`
+4. 看配置：`~/.hermes/config.yaml`
+5. 看工具注册：`tools/registry.py` / `model_tools.py`
+6. 跑最小测试复现
+
+如果怀疑工具没有正确暴露，可以直接打印：
 
 ```python
-# 检查工具注册
 from tools.registry import registry
 print(registry.get_tool_to_toolset_map())
-
-# 直接调用工具
-from model_tools import handle_function_call
-result = handle_function_call("web_search", {"query": "test"})
 ```
 
 ---
 
-## 关键依赖
+## 作为开发者，你可以把 Hermes 理解成什么
 
-| 依赖 | 用途 |
-|------|------|
-| `openai` | LLM API（所有提供商走 OpenAI 兼容接口） |
-| `anthropic` | Anthropic 专用功能（prompt caching 等） |
-| `httpx` | 异步 HTTP |
-| `prompt_toolkit` | TUI |
-| `rich` | 终端美化 |
-| `pydantic` | 数据验证 |
-| `tenacity` | API 调用重试 |
-| `jinja2` | 提示词模板 |
+如果你熟悉别的 Agent 框架，可以这样类比：
 
-## 代码约定
+- 像 ChatGPT Agent：但本地控制感更强
+- 像 LangChain/AutoGen：但主循环更集中在 `AIAgent`
+- 像一个终端 Copilot：CLI 是一等入口
+- 像一个多平台 Bot：gateway 能把它挂到 Telegram / Discord / Slack
 
-- Python 3.11+ 类型注解
-- `async/await` 处理 I/O
-- 工具 handler 返回字符串，不抛异常
-- 每个工具一个文件，自注册
-- 使用 `hermes_logging` 记录日志
-- JSON/YAML 原子写入（先写临时文件再 rename）
+最重要的不是第一天就“全部理解”，而是先形成稳定的心理模型：
+
+> Hermes = 一个带工具系统、技能系统、记忆系统和多入口运行时的 Agent 编排器。
