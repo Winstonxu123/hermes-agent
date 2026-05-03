@@ -33,6 +33,7 @@
 | [CLI 命令指南](./cli-guide.md) | 交互式终端、斜杠命令、常见工作流 | 日常使用者 / 开发者 |
 | [Hermes Desk 使用 SOP](./desk-sop.md) | 本地 Web Desk 的启动、项目、会话、运行和记忆管理流程 | 想通过浏览器使用 Hermes 的用户 |
 | [工具参考手册](./tools-reference.md) | 核心工具名、toolset、注册和调试方法 | 开发者 / 高级用户 |
+| [Tool 系统深度说明](./tool-system-deep-dive.md) | 从注册、toolset、schema 暴露、调度、执行到扩展机制的完整工程链路 | 想写博客或深入理解工具系统的人 |
 | [Skills 技能系统](./skills-guide.md) | Skills 的使用、编写和维护 | 想沉淀 SOP 或扩展提示词能力的用户 |
 | [消息网关指南](./gateway-guide.md) | Telegram/Discord/Slack 等平台接入 | 想部署到聊天平台的用户 |
 | [配置参考](./configuration-reference.md) | `config.yaml`、`.env`、profiles、覆盖顺序 | 需要自定义行为的用户 |

@@ -193,7 +193,7 @@ TOOL_TO_TOOLSET_MAP: Dict[str, str] = registry.get_tool_to_toolset_map()
 TOOLSET_REQUIREMENTS: Dict[str, dict] = registry.get_toolset_requirements()
 
 # Resolved tool names from the last get_tool_definitions() call.
-# Used by code_execution_tool to know which tools are available in this session.
+# Used by code_execution_tool to know which tools are available in this session.（很重要）
 _last_resolved_tool_names: List[str] = []
 
 
