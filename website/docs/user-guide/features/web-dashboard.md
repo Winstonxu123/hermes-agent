@@ -1,7 +1,7 @@
 ---
 sidebar_position: 15
 title: "Web Dashboard"
-description: "Browser-based dashboard for managing configuration, API keys, and monitoring sessions"
+description: "Browser-based dashboard for managing configuration, API keys, sessions, logs, analytics, cron jobs, and skills"
 ---
 
 # Web Dashboard
@@ -11,7 +11,7 @@ The web dashboard is a browser-based UI for managing your Hermes Agent installat
 ## Quick Start
 
 ```bash
-hermes web
+hermes dashboard
 ```
 
 This starts a local web server and opens `http://127.0.0.1:9119` in your browser. The dashboard runs entirely on your machine — no data leaves localhost.
@@ -23,29 +23,31 @@ This starts a local web server and opens `http://127.0.0.1:9119` in your browser
 | `--port` | `9119` | Port to run the web server on |
 | `--host` | `127.0.0.1` | Bind address |
 | `--no-open` | — | Don't auto-open the browser |
+| `--insecure` | off | Allow binding to non-localhost hosts (**DANGEROUS** — exposes API keys on the network; pair with a firewall and strong auth) |
+| `--tui` | off | Expose the in-browser Chat tab (embedded `hermes --tui` via PTY/WebSocket). Alternatively set `HERMES_DASHBOARD_TUI=1`. |
 
 ```bash
 # Custom port
-hermes web --port 8080
+hermes dashboard --port 8080
 
 # Bind to all interfaces (use with caution on shared networks)
-hermes web --host 0.0.0.0
+hermes dashboard --host 0.0.0.0
 
 # Start without opening browser
-hermes web --no-open
+hermes dashboard --no-open
 ```
 
 ## Prerequisites
 
-The web dashboard requires FastAPI and Uvicorn. Install them with:
+The default `hermes-agent` install does not ship the HTTP stack or PTY helper — those are optional extras. The **web dashboard** needs FastAPI and Uvicorn (`web` extra). The **Chat** tab also needs `ptyprocess` to spawn the embedded TUI behind a pseudo-terminal (`pty` extra on POSIX). Install both with:
 
 ```bash
-pip install hermes-agent[web]
+pip install 'hermes-agent[web,pty]'
 ```
 
-If you installed with `pip install hermes-agent[all]`, the web dependencies are already included.
+The `web` extra pulls in FastAPI/Uvicorn; `pty` pulls in `ptyprocess` (POSIX) or `pywinpty` (native Windows — note that the embedded TUI itself still requires WSL). `pip install hermes-agent[all]` includes both extras and is the easiest path if you also want messaging/voice/etc.
 
-When you run `hermes web` without the dependencies, it will tell you what to install. If the frontend hasn't been built yet and `npm` is available, it builds automatically on first launch.
+When you run `hermes dashboard` without the dependencies, it will tell you what to install. If the frontend hasn't been built yet and `npm` is available, it builds automatically on first launch.
 
 ## Pages
 
@@ -59,6 +61,28 @@ The landing page shows a live overview of your installation:
 - **Recent sessions** — list of the 20 most recent sessions with model, message count, token usage, and a preview of the conversation
 
 The status page auto-refreshes every 5 seconds.
+
+### Chat
+
+The **Chat** tab embeds the full Hermes TUI (the same interface you get from `hermes --tui`) directly in the browser. Everything you can do in the terminal TUI — slash commands, model picker, tool-call cards, markdown streaming, clarify/sudo/approval prompts, skin theming — works identically here, because the dashboard is running the real TUI binary and rendering its ANSI output through [xterm.js](https://xtermjs.org/) with its WebGL renderer for pixel-perfect cell layout.
+
+**How it works:**
+
+- `/api/pty` opens a WebSocket authenticated with the dashboard's session token
+- The server spawns `hermes --tui` behind a POSIX pseudo-terminal
+- Keystrokes travel to the PTY; ANSI output streams back to the browser
+- xterm.js's WebGL renderer paints each cell to an integer-pixel grid; mouse tracking (SGR 1006), wide characters (Unicode 11), and box-drawing glyphs all render natively
+- Resizing the browser window resizes the TUI via the `@xterm/addon-fit` addon
+
+**Resume an existing session:** from the **Sessions** tab, click the play icon (▶) next to any session. That jumps to `/chat?resume=<id>` and launches the TUI with `--resume`, loading the full history.
+
+**Prerequisites:**
+
+- Node.js (same requirement as `hermes --tui`; the TUI bundle is built on first launch)
+- `ptyprocess` — installed by the `pty` extra (`pip install 'hermes-agent[web,pty]'`, or `[all]` covers both)
+- POSIX kernel (Linux, macOS, or WSL). Native Windows Python is not supported — use WSL.
+
+Close the browser tab and the PTY is reaped cleanly on the server. Re-opening spawns a fresh session.
 
 ### Config
 
@@ -103,6 +127,54 @@ Each key shows:
 - A delete button to remove it
 
 Advanced/rarely-used keys are hidden by default behind a toggle.
+
+### Sessions
+
+Browse and inspect all agent sessions. Each row shows the session title, source platform icon (CLI, Telegram, Discord, Slack, cron), model name, message count, tool call count, and how long ago it was active. Live sessions are marked with a pulsing badge.
+
+- **Search** — full-text search across all message content using FTS5. Results show highlighted snippets and auto-scroll to the first matching message when expanded.
+- **Expand** — click a session to load its full message history. Messages are color-coded by role (user, assistant, system, tool) and rendered as Markdown with syntax highlighting.
+- **Tool calls** — assistant messages with tool calls show collapsible blocks with the function name and JSON arguments.
+- **Delete** — remove a session and its message history with the trash icon.
+
+### Logs
+
+View agent, gateway, and error log files with filtering and live tailing.
+
+- **File** — switch between `agent`, `errors`, and `gateway` log files
+- **Level** — filter by log level: ALL, DEBUG, INFO, WARNING, or ERROR
+- **Component** — filter by source component: all, gateway, agent, tools, cli, or cron
+- **Lines** — choose how many lines to display (50, 100, 200, or 500)
+- **Auto-refresh** — toggle live tailing that polls for new log lines every 5 seconds
+- **Color-coded** — log lines are colored by severity (red for errors, yellow for warnings, dim for debug)
+
+### Analytics
+
+Usage and cost analytics computed from session history. Select a time period (7, 30, or 90 days) to see:
+
+- **Summary cards** — total tokens (input/output), cache hit percentage, total estimated or actual cost, and total session count with daily average
+- **Daily token chart** — stacked bar chart showing input and output token usage per day, with hover tooltips showing breakdowns and cost
+- **Daily breakdown table** — date, session count, input tokens, output tokens, cache hit rate, and cost for each day
+- **Per-model breakdown** — table showing each model used, its session count, token usage, and estimated cost
+
+### Cron
+
+Create and manage scheduled cron jobs that run agent prompts on a recurring schedule.
+
+- **Create** — fill in a name (optional), prompt, cron expression (e.g. `0 9 * * *`), and delivery target (local, Telegram, Discord, Slack, or email)
+- **Job list** — each job shows its name, prompt preview, schedule expression, state badge (enabled/paused/error), delivery target, last run time, and next run time
+- **Pause / Resume** — toggle a job between active and paused states
+- **Trigger now** — immediately execute a job outside its normal schedule
+- **Delete** — permanently remove a cron job
+
+### Skills
+
+Browse, search, and toggle skills and toolsets. Skills are loaded from `~/.hermes/skills/` and grouped by category.
+
+- **Search** — filter skills and toolsets by name, description, or category
+- **Category filter** — click category pills to narrow the list (e.g. MLOps, MCP, Red Teaming, AI)
+- **Toggle** — enable or disable individual skills with a switch. Changes take effect on the next session.
+- **Toolsets** — a separate section shows built-in toolsets (file operations, web browsing, etc.) with their active/inactive status, setup requirements, and list of included tools
 
 :::warning Security
 The web dashboard reads and writes your `.env` file, which contains API keys and secrets. It binds to `127.0.0.1` by default — only accessible from your local machine. If you bind to `0.0.0.0`, anyone on your network can view and modify your credentials. The dashboard has no authentication of its own.
@@ -159,6 +231,66 @@ Sets an environment variable. Body: `{"key": "VAR_NAME", "value": "secret"}`.
 
 Removes an environment variable. Body: `{"key": "VAR_NAME"}`.
 
+### GET /api/sessions/\{session_id\}
+
+Returns metadata for a single session.
+
+### GET /api/sessions/\{session_id\}/messages
+
+Returns the full message history for a session, including tool calls and timestamps.
+
+### GET /api/sessions/search
+
+Full-text search across message content. Query parameter: `q`. Returns matching session IDs with highlighted snippets.
+
+### DELETE /api/sessions/\{session_id\}
+
+Deletes a session and its message history.
+
+### GET /api/logs
+
+Returns log lines. Query parameters: `file` (agent/errors/gateway), `lines` (count), `level`, `component`.
+
+### GET /api/analytics/usage
+
+Returns token usage, cost, and session analytics. Query parameter: `days` (default 30). Response includes daily breakdowns and per-model aggregates.
+
+### GET /api/cron/jobs
+
+Returns all configured cron jobs with their state, schedule, and run history.
+
+### POST /api/cron/jobs
+
+Creates a new cron job. Body: `{"prompt": "...", "schedule": "0 9 * * *", "name": "...", "deliver": "local"}`.
+
+### POST /api/cron/jobs/\{job_id\}/pause
+
+Pauses a cron job.
+
+### POST /api/cron/jobs/\{job_id\}/resume
+
+Resumes a paused cron job.
+
+### POST /api/cron/jobs/\{job_id\}/trigger
+
+Immediately triggers a cron job outside its schedule.
+
+### DELETE /api/cron/jobs/\{job_id\}
+
+Deletes a cron job.
+
+### GET /api/skills
+
+Returns all skills with their name, description, category, and enabled status.
+
+### PUT /api/skills/toggle
+
+Enables or disables a skill. Body: `{"name": "skill-name", "enabled": true}`.
+
+### GET /api/tools/toolsets
+
+Returns all toolsets with their label, description, tools list, and active/configured status.
+
 ## CORS
 
 The web server restricts CORS to localhost origins only:
@@ -175,7 +307,7 @@ If you're contributing to the web dashboard frontend:
 
 ```bash
 # Terminal 1: start the backend API
-hermes web --no-open
+hermes dashboard --no-open
 
 # Terminal 2: start the Vite dev server with HMR
 cd web/
@@ -189,4 +321,29 @@ The frontend is built with React 19, TypeScript, Tailwind CSS v4, and shadcn/ui-
 
 ## Automatic Build on Update
 
-When you run `hermes update`, the web frontend is automatically rebuilt if `npm` is available. This keeps the dashboard in sync with code updates. If `npm` isn't installed, the update skips the frontend build and `hermes web` will build it on first launch.
+When you run `hermes update`, the web frontend is automatically rebuilt if `npm` is available. This keeps the dashboard in sync with code updates. If `npm` isn't installed, the update skips the frontend build and `hermes dashboard` will build it on first launch.
+
+## Themes & plugins
+
+The dashboard ships with six built-in themes and can be extended with user-defined themes, plugin tabs, and backend API routes — all drop-in, no repo clone needed.
+
+**Switch themes live** from the header bar — click the palette icon next to the language switcher. Selection persists to `config.yaml` under `dashboard.theme` and is restored on page load.
+
+Built-in themes:
+
+| Theme | Character |
+|-------|-----------|
+| **Hermes Teal** (`default`) | Dark teal + cream, system fonts, comfortable spacing |
+| **Midnight** (`midnight`) | Deep blue-violet, Inter + JetBrains Mono |
+| **Ember** (`ember`) | Warm crimson + bronze, Spectral serif + IBM Plex Mono |
+| **Mono** (`mono`) | Grayscale, IBM Plex, compact |
+| **Cyberpunk** (`cyberpunk`) | Neon green on black, Share Tech Mono |
+| **Rosé** (`rose`) | Pink + ivory, Fraunces serif, spacious |
+
+To build your own theme, add a plugin tab, inject into shell slots, or expose plugin-specific REST endpoints, see **[Extending the Dashboard](./extending-the-dashboard)** — the complete guide covers:
+
+- Theme YAML schema — palette, typography, layout, assets, componentStyles, colorOverrides, customCSS
+- Layout variants — `standard`, `cockpit`, `tiled`
+- Plugin manifest, SDK, shell slots, page-scoped slots (inject widgets into built-in pages without overriding them), backend FastAPI routes
+- A full combined theme-plus-plugin walkthrough (Strike Freedom cockpit demo)
+- Discovery, reload, and troubleshooting

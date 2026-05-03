@@ -67,7 +67,7 @@ export default function DeskPage() {
       })
       .catch(() => showToast("Failed to load projects", "error"));
     api.getSessions()
-      .then((rows) => setSessions(rows.filter((s) => s.source === "desk")))
+      .then((resp) => setSessions(resp.sessions.filter((s) => s.source === "desk")))
       .catch(() => {});
   };
 
