@@ -343,7 +343,7 @@ def session_search(
                 "message": "No matching sessions found.",
             }, ensure_ascii=False)
 
-        # Resolve child sessions to their parent — delegation stores detailed
+        # Resolve child sessions（main agent delegate task will create child sessions） to their parent — delegation stores detailed
         # content in child sessions, but the user's conversation is the parent.
         def _resolve_to_parent(session_id: str) -> str:
             """Walk delegation chain to find the root parent session ID."""
